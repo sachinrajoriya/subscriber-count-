@@ -1,12 +1,12 @@
+const express = require('express');
 const { Telegraf } = require('telegraf');
+require('dotenv').config();
 
-// Bot token (keep this secure)
-const bot = new Telegraf('7553319687:AAEC4ctbEYomz-37d0sZkTIip1jMeY9JtKI');
+const bot = new Telegraf(process.env.TELEGRAM_TOKEN);
+const app = express();
 
-// Channel numeric ID (replace with your channel's ID)
+// Channel ID and target subscriber count
 const channelId = '@adultparodies';
-
-// Target subscriber count
 const targetSubscribers = 1000;
 
 // Global variables to track last count and the message ID
@@ -37,14 +37,14 @@ const updateSubscriberMessage = async () => {
   
   lastCount = currentCount;
   const remaining = targetSubscribers - currentCount;
-  const text = `Current Subscribers: ${currentCount}\nSubscribers needed to reach ${targetSubscribers}: ${remaining > 0 ? remaining : 0}\n\nPlease show your support share this link: t.me/adultparodies`;
+  const text = `Current Subscribers: ${currentCount}\nSubscribers needed to reach ${targetSubscribers}: ${remaining > 0 ? remaining : 0}\n\nPlease show your support, share this link: t.me/adultparodies`;
   
   if (messageId) {
     try {
       await bot.telegram.editMessageText(channelId, messageId, null, text);
       console.log('Message edited with new count:', currentCount);
     } catch (error) {
-      // Ignore the error if the message is not modified
+      // Ignore error if message is not modified
       if (
         error.response &&
         error.response.description &&
@@ -66,15 +66,31 @@ const updateSubscriberMessage = async () => {
   }
 };
 
+// Set up webhook callback for Telegram updates at "/webhook"
+app.use(bot.webhookCallback('/webhook'));
+
 // Command to start subscriber count updates
 bot.command('start_updates', async (ctx) => {
-  // Immediately send the initial update
+  // Send an immediate update
   await updateSubscriberMessage();
-  ctx.reply('Subscriber count updates have started.');
-  
-  // Poll every 5 seconds (adjust interval as needed)
-  setInterval(updateSubscriberMessage, 5000);
+  // Inform the user to schedule periodic calls to the /update endpoint
+  ctx.reply('Subscriber count update initiated. Please schedule periodic calls to the /update endpoint (e.g., using a cron job).');
 });
 
-// Launch the bot
-bot.launch();
+// Expose an endpoint to trigger the update manually (for scheduled pings)
+app.get('/update', async (req, res) => {
+  await updateSubscriberMessage();
+  res.send('Subscriber update executed.');
+});
+
+// Set the webhook using the WEBHOOK_URL environment variable
+const webhookUrl = process.env.WEBHOOK_URL; // e.g., "https://your-app.vercel.app"
+if (webhookUrl) {
+  bot.telegram.setWebhook(webhookUrl + '/webhook')
+    .then(() => console.log('Webhook set successfully'))
+    .catch(err => console.error('Error setting webhook:', err));
+} else {
+  console.error('WEBHOOK_URL is not set in environment variables.');
+}
+
+module.exports = app;
